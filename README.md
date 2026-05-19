@@ -13,7 +13,7 @@ A lightweight embeddable event tracking system. Paste a small script on any webs
 ## Quick Start
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/myfishnameisqwerty/overwoolf_task.git
 cd overwoolf_task
 docker compose up --build
 ```
