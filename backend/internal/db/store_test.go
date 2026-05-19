@@ -41,10 +41,16 @@ func evt(t *testing.T, clientID, sessionID, eventType string, ts time.Time) type
 	}
 }
 
-// TestGetClient_Found verifies the seeded demo-client row is returned correctly.
+// TestGetClient_Found verifies a client registered via RegisterClient is then
+// retrievable via GetClient with the default config.
 func TestGetClient_Found(t *testing.T) {
 	s := openTestDB(t)
-	cfg, err := s.GetClient(context.Background(), "demo-client")
+	ctx := context.Background()
+	if _, err := s.RegisterClient(ctx, "demo-client"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	cfg, err := s.GetClient(ctx, "demo-client")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
