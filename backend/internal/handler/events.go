@@ -25,6 +25,10 @@ func (h *Handler) PostEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, e := range events {
+		if e.EventID == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("event[%d]: eventId required", i))
+			return
+		}
 		if !validateClientID(e.ClientID) {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("event[%d]: invalid client ID", i))
 			return

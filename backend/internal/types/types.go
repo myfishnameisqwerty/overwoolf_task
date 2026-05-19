@@ -9,6 +9,7 @@ type ClientConfig struct {
 }
 
 type Event struct {
+	EventID   string          `json:"eventId"`
 	ClientID  string          `json:"clientId"`
 	SessionID string          `json:"sessionId"`
 	EventType string          `json:"eventType"`
@@ -18,10 +19,12 @@ type Event struct {
 
 type EventRecord struct {
 	ID        int64           `json:"id"`
+	EventID   string          `json:"eventId"`
 	ClientID  string          `json:"clientId"`
 	SessionID string          `json:"sessionId"`
 	EventType string          `json:"eventType"`
 	Timestamp string          `json:"timestamp"`
+	ServerTS  string          `json:"serverTs"`
 	Metadata  json.RawMessage `json:"metadata"`
 }
 

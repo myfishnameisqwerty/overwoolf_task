@@ -57,12 +57,14 @@ func (s *Store) InsertEvents(ctx context.Context, events []types.Event) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO events (client_id, session_id, event_type, timestamp, metadata)
-		 VALUES (?, ?, ?, ?, ?)`)
+		`INSERT OR IGNORE INTO events (event_id, client_id, session_id, event_type, timestamp, server_ts, metadata)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
+
+	serverTS := time.Now().UTC().Format(time.RFC3339Nano)
 
 	for _, e := range events {
 		var meta *string
@@ -70,7 +72,7 @@ func (s *Store) InsertEvents(ctx context.Context, events []types.Event) error {
 			m := string(e.Metadata)
 			meta = &m
 		}
-		if _, err := stmt.ExecContext(ctx, e.ClientID, e.SessionID, e.EventType, e.Timestamp, meta); err != nil {
+		if _, err := stmt.ExecContext(ctx, e.EventID, e.ClientID, e.SessionID, e.EventType, e.Timestamp, serverTS, meta); err != nil {
 			return err
 		}
 	}
@@ -89,24 +91,24 @@ func (s *Store) RegisterClient(ctx context.Context, clientID string) (types.Clie
 }
 
 func (s *Store) GetActiveSessions(ctx context.Context, since time.Time, before *time.Time, limit int) ([]types.SessionSummary, int, error) {
-	sinceStr := since.UTC().Format(time.RFC3339)
+	sinceStr := since.UTC().Format(time.RFC3339Nano)
 
 	var total int
 	row := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM events WHERE timestamp > ?`, sinceStr)
+		`SELECT COUNT(DISTINCT session_id) FROM events WHERE server_ts > ?`, sinceStr)
 	if err := row.Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	query := `SELECT session_id, MAX(client_id) AS client_id, COUNT(*) AS event_count, MAX(timestamp) AS last_seen
+	query := `SELECT session_id, MAX(client_id) AS client_id, COUNT(*) AS event_count, MAX(server_ts) AS last_seen
 	          FROM events
-	          WHERE timestamp > ?
+	          WHERE server_ts > ?
 	          GROUP BY session_id`
 	args := []any{sinceStr}
 
 	if before != nil {
 		query += ` HAVING last_seen < ?`
-		args = append(args, before.UTC().Format(time.RFC3339))
+		args = append(args, before.UTC().Format(time.RFC3339Nano))
 	}
 
 	query += ` ORDER BY last_seen DESC LIMIT ?`
@@ -137,7 +139,7 @@ func (s *Store) GetSessionEvents(ctx context.Context, sessionID string, before *
 		return nil, 0, err
 	}
 
-	query := `SELECT id, client_id, session_id, event_type, timestamp, metadata
+	query := `SELECT id, event_id, client_id, session_id, event_type, timestamp, server_ts, metadata
 	          FROM events
 	          WHERE session_id = ?`
 	args := []any{sessionID}
@@ -160,7 +162,7 @@ func (s *Store) GetSessionEvents(ctx context.Context, sessionID string, before *
 	for rows.Next() {
 		var r types.EventRecord
 		var meta sql.NullString
-		if err := rows.Scan(&r.ID, &r.ClientID, &r.SessionID, &r.EventType, &r.Timestamp, &meta); err != nil {
+		if err := rows.Scan(&r.ID, &r.EventID, &r.ClientID, &r.SessionID, &r.EventType, &r.Timestamp, &r.ServerTS, &meta); err != nil {
 			return nil, 0, err
 		}
 		if meta.Valid && meta.String != "" {
@@ -179,19 +181,21 @@ func (s *Store) GetStats(ctx context.Context, clientID string, since time.Time) 
 		Breakdown: map[string]int{},
 	}
 
+	sinceStr := since.UTC().Format(time.RFC3339Nano)
+
 	row := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT session_id) FROM events
-		 WHERE client_id = ? AND timestamp > ?`,
-		clientID, since.UTC().Format(time.RFC3339))
+		 WHERE client_id = ? AND server_ts > ?`,
+		clientID, sinceStr)
 	if err := row.Scan(&stats.SessionCount); err != nil {
 		return stats, err
 	}
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT event_type, COUNT(*) FROM events
-		 WHERE client_id = ? AND timestamp > ?
+		 WHERE client_id = ? AND server_ts > ?
 		 GROUP BY event_type`,
-		clientID, since.UTC().Format(time.RFC3339))
+		clientID, sinceStr)
 	if err != nil {
 		return stats, err
 	}

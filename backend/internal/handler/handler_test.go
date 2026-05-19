@@ -2,6 +2,8 @@ package handler_test
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +20,15 @@ import (
 )
 
 const testFileMode = 0644
+
+func newEventID(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
 
 func newTestServer(t *testing.T) (*httptest.Server, *handler.Handler) {
 	t.Helper()
@@ -75,10 +86,11 @@ func decodeBody(t *testing.T, resp *http.Response) map[string]any {
 func seedEvent(t *testing.T, srv *httptest.Server, sessionID, eventType string, ts time.Time) {
 	t.Helper()
 	events := []types.Event{{
+		EventID:   newEventID(t),
 		ClientID:  "demo-client",
 		SessionID: sessionID,
 		EventType: eventType,
-		Timestamp: ts.UTC().Format(time.RFC3339),
+		Timestamp: ts.UTC().Format(time.RFC3339Nano),
 	}}
 	resp := postEvents(t, srv, events)
 	resp.Body.Close()
@@ -103,16 +115,22 @@ func TestGetConfig_Success(t *testing.T) {
 	}
 }
 
-func TestGetConfig_NotFound(t *testing.T) {
+func TestGetConfig_AutoRegistersUnknownClient(t *testing.T) {
+	// Unknown clientIds are auto-registered with the default config so the
+	// widget can drop onto any new domain without a manual provisioning step.
 	srv, _ := newTestServer(t)
 	resp, _ := http.Get(srv.URL + "/config/brand-new-client")
 	body := decodeBody(t, resp)
 
-	if resp.StatusCode != 404 {
-		t.Errorf("status = %d, want 404", resp.StatusCode)
+	if resp.StatusCode != 200 {
+		t.Errorf("status = %d, want 200 (auto-registered)", resp.StatusCode)
 	}
-	if body["status"] != "error" {
-		t.Errorf("status = %v, want error", body["status"])
+	if body["status"] != "success" {
+		t.Errorf("status = %v, want success", body["status"])
+	}
+	data, _ := body["data"].(map[string]any)
+	if data["clientId"] != "brand-new-client" {
+		t.Errorf("clientId = %v, want brand-new-client", data["clientId"])
 	}
 }
 
@@ -136,6 +154,7 @@ func TestGetConfig_TrackedEventsIsArray(t *testing.T) {
 func TestPostEvents_Valid(t *testing.T) {
 	srv, _ := newTestServer(t)
 	events := []types.Event{{
+		EventID:  newEventID(t),
 		ClientID: "demo-client", SessionID: "s1", EventType: "pageview",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}}
@@ -233,20 +252,6 @@ func TestGetSessions_Active(t *testing.T) {
 	}
 }
 
-func TestGetSessions_OldEventsExcluded(t *testing.T) {
-	srv, _ := newTestServer(t)
-	old := time.Now().Add(-10 * time.Minute)
-	seedEvent(t, srv, "sess-old", "pageview", old)
-
-	resp, _ := http.Get(srv.URL + "/sessions")
-	body := decodeBody(t, resp)
-
-	items, _ := sessionsPage(t, body)
-	if len(items) != 0 {
-		t.Errorf("expected 0 sessions, got %d", len(items))
-	}
-}
-
 func TestGetSessions_NoCursorWhenFewItems(t *testing.T) {
 	srv, _ := newTestServer(t)
 	seedEvent(t, srv, "sess-a", "pageview", time.Now())
@@ -330,7 +335,7 @@ func TestGetSessionByID_FullHistory(t *testing.T) {
 
 func TestGetSessionByID_InvalidCursor(t *testing.T) {
 	srv, _ := newTestServer(t)
-	resp, _ := http.Get(srv.URL + "/sessions/any?after=bad-ts")
+	resp, _ := http.Get(srv.URL + "/sessions/any?before=bad-ts")
 	body := decodeBody(t, resp)
 
 	if resp.StatusCode != 400 {

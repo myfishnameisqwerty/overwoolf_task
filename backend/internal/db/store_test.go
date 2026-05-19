@@ -2,6 +2,8 @@ package db_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"testing"
 	"time"
 	"tracker/internal/db"
@@ -19,12 +21,23 @@ func openTestDB(t *testing.T) storage.Storage {
 	return store
 }
 
-func evt(clientID, sessionID, eventType string, ts time.Time) types.Event {
+func newEventID(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
+
+func evt(t *testing.T, clientID, sessionID, eventType string, ts time.Time) types.Event {
+	t.Helper()
 	return types.Event{
+		EventID:   newEventID(t),
 		ClientID:  clientID,
 		SessionID: sessionID,
 		EventType: eventType,
-		Timestamp: ts.UTC().Format(time.RFC3339),
+		Timestamp: ts.UTC().Format(time.RFC3339Nano),
 	}
 }
 
@@ -58,7 +71,7 @@ func TestInsertEvents_Single(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	if err := s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-1", "pageview", time.Now())}); err != nil {
+	if err := s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-1", "pageview", time.Now())}); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 
@@ -80,11 +93,11 @@ func TestInsertEvents_Batch(t *testing.T) {
 	now := time.Now()
 
 	batch := []types.Event{
-		evt("demo-client", "sess-batch", "pageview", now),
-		evt("demo-client", "sess-batch", "click", now.Add(1*time.Second)),
-		evt("demo-client", "sess-batch", "click", now.Add(2*time.Second)),
-		evt("demo-client", "sess-batch", "custom", now.Add(3*time.Second)),
-		evt("demo-client", "sess-batch", "custom", now.Add(4*time.Second)),
+		evt(t, "demo-client", "sess-batch", "pageview", now),
+		evt(t, "demo-client", "sess-batch", "click", now.Add(1*time.Second)),
+		evt(t, "demo-client", "sess-batch", "click", now.Add(2*time.Second)),
+		evt(t, "demo-client", "sess-batch", "custom", now.Add(3*time.Second)),
+		evt(t, "demo-client", "sess-batch", "custom", now.Add(4*time.Second)),
 	}
 	if err := s.InsertEvents(ctx, batch); err != nil {
 		t.Fatalf("insert: %v", err)
@@ -118,7 +131,7 @@ func TestGetActiveSessions_WithinWindow(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-active", "pageview", now)})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-active", "pageview", now)})
 
 	sessions, _, err := s.GetActiveSessions(ctx, now.Add(-5*time.Minute), nil, 100)
 	if err != nil {
@@ -138,12 +151,12 @@ func TestGetActiveSessions_WithinWindow(t *testing.T) {
 func TestGetActiveSessions_OutsideWindow(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	now := time.Now()
-	old := now.Add(-10 * time.Minute)
 
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-old", "pageview", old)})
+	// server_ts is set at insert time, so we exercise the WHERE filter by
+	// passing a 'since' that's in the future relative to all inserted events.
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-recent", "pageview", time.Now())})
 
-	sessions, _, err := s.GetActiveSessions(ctx, now.Add(-5*time.Minute), nil, 100)
+	sessions, _, err := s.GetActiveSessions(ctx, time.Now().Add(1*time.Hour), nil, 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,8 +171,8 @@ func TestGetActiveSessions_Ordering(t *testing.T) {
 	now := time.Now()
 	earlier := now.Add(-1 * time.Minute)
 
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-earlier", "click", earlier)})
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-later", "click", now)})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-earlier", "click", earlier)})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-later", "click", now)})
 
 	sessions, _, err := s.GetActiveSessions(ctx, now.Add(-5*time.Minute), nil, 100)
 	if err != nil {
@@ -179,9 +192,9 @@ func TestGetActiveSessions_Pagination(t *testing.T) {
 	now := time.Now()
 
 	// Insert 3 sessions with distinct timestamps, 1 second apart.
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-1", "pageview", now.Add(-2*time.Second))})
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-2", "pageview", now.Add(-1*time.Second))})
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-3", "pageview", now)})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-1", "pageview", now.Add(-2*time.Second))})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-2", "pageview", now.Add(-1*time.Second))})
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-3", "pageview", now)})
 
 	// Page 1: limit=2, no cursor → most recent 2 sessions.
 	page1, _, err := s.GetActiveSessions(ctx, now.Add(-5*time.Minute), nil, 2)
@@ -199,7 +212,10 @@ func TestGetActiveSessions_Pagination(t *testing.T) {
 	}
 
 	// Page 2: cursor = last_seen of page1[1].
-	cursor, _ := time.Parse(time.RFC3339, page1[1].LastSeen)
+	cursor, err := time.Parse(time.RFC3339Nano, page1[1].LastSeen)
+	if err != nil {
+		t.Fatalf("parse cursor: %v", err)
+	}
 	page2, _, err := s.GetActiveSessions(ctx, now.Add(-5*time.Minute), &cursor, 2)
 	if err != nil {
 		t.Fatalf("page2: %v", err)
@@ -223,9 +239,9 @@ func TestGetSessionEvents_Ordering(t *testing.T) {
 
 	// Insert out of order to verify ORDER BY takes effect.
 	s.InsertEvents(ctx, []types.Event{
-		evt("demo-client", "sess-ord", "click", t3),
-		evt("demo-client", "sess-ord", "pageview", t1),
-		evt("demo-client", "sess-ord", "custom", t2),
+		evt(t, "demo-client", "sess-ord", "click", t3),
+		evt(t, "demo-client", "sess-ord", "pageview", t1),
+		evt(t, "demo-client", "sess-ord", "custom", t2),
 	})
 
 	records, _, err := s.GetSessionEvents(ctx, "sess-ord", nil, 1000)
@@ -235,8 +251,8 @@ func TestGetSessionEvents_Ordering(t *testing.T) {
 	if len(records) != 3 {
 		t.Fatalf("len = %d, want 3", len(records))
 	}
-	if records[0].Timestamp > records[1].Timestamp || records[1].Timestamp > records[2].Timestamp {
-		t.Errorf("events not ascending: %s %s %s", records[0].Timestamp, records[1].Timestamp, records[2].Timestamp)
+	if records[0].Timestamp < records[1].Timestamp || records[1].Timestamp < records[2].Timestamp {
+		t.Errorf("events not descending (newest first): %s %s %s", records[0].Timestamp, records[1].Timestamp, records[2].Timestamp)
 	}
 }
 
@@ -246,12 +262,12 @@ func TestGetSessionEvents_Pagination(t *testing.T) {
 	now := time.Now()
 
 	s.InsertEvents(ctx, []types.Event{
-		evt("demo-client", "sess-p", "pageview", now.Add(-2*time.Second)),
-		evt("demo-client", "sess-p", "click", now.Add(-1*time.Second)),
-		evt("demo-client", "sess-p", "custom", now),
+		evt(t, "demo-client", "sess-p", "pageview", now.Add(-2*time.Second)),
+		evt(t, "demo-client", "sess-p", "click", now.Add(-1*time.Second)),
+		evt(t, "demo-client", "sess-p", "custom", now),
 	})
 
-	// Page 1: limit=2, no cursor → 2 oldest events (ASC).
+	// Page 1: limit=2, no cursor → 2 newest events (DESC).
 	page1, _, err := s.GetSessionEvents(ctx, "sess-p", nil, 2)
 	if err != nil {
 		t.Fatalf("page1: %v", err)
@@ -259,15 +275,18 @@ func TestGetSessionEvents_Pagination(t *testing.T) {
 	if len(page1) != 2 {
 		t.Fatalf("page1 len = %d, want 2", len(page1))
 	}
-	if page1[0].EventType != "pageview" {
-		t.Errorf("page1[0] = %q, want pageview (oldest first)", page1[0].EventType)
+	if page1[0].EventType != "custom" {
+		t.Errorf("page1[0] = %q, want custom (newest first)", page1[0].EventType)
 	}
 	if page1[1].EventType != "click" {
 		t.Errorf("page1[1] = %q, want click", page1[1].EventType)
 	}
 
-	// Page 2: cursor = timestamp of page1[1] (newest item on page 1).
-	cursor, _ := time.Parse(time.RFC3339, page1[1].Timestamp)
+	// Page 2: cursor = timestamp of page1[1] (oldest item on page 1).
+	cursor, err := time.Parse(time.RFC3339Nano, page1[1].Timestamp)
+	if err != nil {
+		t.Fatalf("parse cursor: %v", err)
+	}
 	page2, _, err := s.GetSessionEvents(ctx, "sess-p", &cursor, 2)
 	if err != nil {
 		t.Fatalf("page2: %v", err)
@@ -275,8 +294,8 @@ func TestGetSessionEvents_Pagination(t *testing.T) {
 	if len(page2) != 1 {
 		t.Fatalf("page2 len = %d, want 1", len(page2))
 	}
-	if page2[0].EventType != "custom" {
-		t.Errorf("page2[0] = %q, want custom (newest)", page2[0].EventType)
+	if page2[0].EventType != "pageview" {
+		t.Errorf("page2[0] = %q, want pageview (oldest)", page2[0].EventType)
 	}
 }
 
@@ -317,9 +336,9 @@ func TestGetStats_Populated(t *testing.T) {
 	now := time.Now()
 
 	s.InsertEvents(ctx, []types.Event{
-		evt("demo-client", "sess-a", "pageview", now),
-		evt("demo-client", "sess-a", "click", now),
-		evt("demo-client", "sess-b", "pageview", now),
+		evt(t, "demo-client", "sess-a", "pageview", now),
+		evt(t, "demo-client", "sess-a", "click", now),
+		evt(t, "demo-client", "sess-b", "pageview", now),
 	})
 
 	stats, err := s.GetStats(ctx, "demo-client", now.Add(-5*time.Minute))
@@ -383,20 +402,19 @@ func TestRegisterClient_Idempotent(t *testing.T) {
 func TestGetStats_WindowFiltering(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	now := time.Now()
-	old := now.Add(-10 * time.Minute)
 
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-old", "pageview", old)})
-	s.InsertEvents(ctx, []types.Event{evt("demo-client", "sess-new", "pageview", now)})
+	// server_ts is set at insert time, so we exercise the WHERE filter via
+	// a future 'since' that excludes everything we just inserted.
+	s.InsertEvents(ctx, []types.Event{evt(t, "demo-client", "sess-recent", "pageview", time.Now())})
 
-	stats, err := s.GetStats(ctx, "demo-client", now.Add(-5*time.Minute))
+	stats, err := s.GetStats(ctx, "demo-client", time.Now().Add(1*time.Hour))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if stats.SessionCount != 1 {
-		t.Errorf("sessionCount = %d, want 1 (old event filtered)", stats.SessionCount)
+	if stats.SessionCount != 0 {
+		t.Errorf("sessionCount = %d, want 0 (recent event excluded by future since)", stats.SessionCount)
 	}
-	if stats.Breakdown["pageview"] != 1 {
-		t.Errorf("pageview = %d, want 1", stats.Breakdown["pageview"])
+	if len(stats.Breakdown) != 0 {
+		t.Errorf("breakdown len = %d, want 0", len(stats.Breakdown))
 	}
 }

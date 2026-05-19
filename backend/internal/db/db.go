@@ -28,9 +28,10 @@ func Open(path, schemaSQL string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// SQLite allows only one writer at a time. A single connection lets the
-	// database/sql pool serialize writes without "database is locked" errors.
-	db.SetMaxOpenConns(1)
+	// WAL mode lets readers run concurrently with a single writer. Multiple
+	// connections give readers parallelism; busy_timeout below handles the
+	// transient lock when two writers race.
+	db.SetMaxOpenConns(25)
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
