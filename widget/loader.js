@@ -11,12 +11,8 @@
  *     })();
  *   </script>
  *
- * This is a single self-contained block. No external files. No blocking. Works on any website.
- * The client ID is automatically derived from the page domain (location.hostname).
- * To override, set window._trackerClientId before this snippet runs.
  */
 
-window._trackerClientId = window._trackerClientId || location.hostname;
 window._tracker = window._tracker || [];
 (function() {
   var BACKEND_URL = 'http://localhost:8080';

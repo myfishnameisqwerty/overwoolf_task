@@ -1,7 +1,11 @@
 (function() {
-  var BACKEND_URL = 'http://localhost:8080';
+  var thisScript = document.currentScript;
+  var BACKEND_URL = new URL(thisScript.src).origin;
+  var clientId = location.hostname || 'unknown';
 
-  var clientId;
+  var MAX_QUEUE = 500;
+  var FETCH_TIMEOUT_MS = 10000;
+
   var sessionId;
   var flushInterval;
   var queue = [];
@@ -12,6 +16,7 @@
 
   function makeEvent(eventType, metadata) {
     return {
+      eventId: crypto.randomUUID(),
       clientId: clientId,
       sessionId: sessionId,
       eventType: eventType,
@@ -20,26 +25,43 @@
     };
   }
 
+  function capQueue() {
+    if (queue.length > MAX_QUEUE) {
+      queue = queue.slice(queue.length - MAX_QUEUE);
+    }
+  }
+
   function handleCommand(cmd) {
     if (!Array.isArray(cmd) || cmd[0] !== 'track') return;
     queue.push(makeEvent(cmd[1], cmd[2] || {}));
+    capQueue();
   }
 
   function flush() {
     if (queue.length === 0) return;
     var batch = queue.slice();
     queue = [];
+
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
+
     fetch(BACKEND_URL + '/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(batch)
+      body: JSON.stringify(batch),
+      signal: controller.signal
+    }).then(function(r) {
+      clearTimeout(timeoutId);
+      if (!r.ok) throw new Error('http ' + r.status);
     }).catch(function() {
+      clearTimeout(timeoutId);
       queue = batch.concat(queue);
+      capQueue();
     });
   }
 
   function updateBadge() {
-    fetch(BACKEND_URL + '/stats/' + clientId)
+    fetch(BACKEND_URL + '/stats/' + encodeURIComponent(clientId))
       .then(function(r) { return r.json(); })
       .then(function(json) {
         var count = (json.data && json.data.sessionCount) || 0;
@@ -120,7 +142,7 @@
     }
     badgeShadowCount = null;
     queue = [];
-    window._tracker = [];
+    delete window._tracker;
   }
 
   function startup() {
@@ -139,6 +161,7 @@
           label: el.getAttribute('data-track'),
           tag: el.tagName.toLowerCase()
         }));
+        capQueue();
       }
     };
     document.addEventListener('click', clickListener);
@@ -160,9 +183,7 @@
   }
 
   function init() {
-    clientId = window._trackerClientId || location.hostname;
-
-    fetch(BACKEND_URL + '/config/' + clientId)
+    fetch(BACKEND_URL + '/config/' + encodeURIComponent(clientId))
       .then(function(r) { return r.json(); })
       .then(function(json) {
         flushInterval = (json.data && json.data.flushInterval) || 5000;
