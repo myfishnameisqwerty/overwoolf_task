@@ -37,7 +37,7 @@
           <tbody>
             <template x-for="s in sessions" :key="s.sessionId">
               <tr data-clickable @click="selectSession(s.sessionId)">
-                <td x-text="shortId(s.sessionId)" :title="s.sessionId"></td>
+                <td x-text="s.sessionId" :title="s.sessionId"></td>
                 <td><code x-text="s.clientId"></code></td>
                 <td x-text="s.eventCount"></td>
                 <td x-text="relativeTime(s.lastSeen)"></td>
@@ -240,9 +240,6 @@
             return Object.keys(bd).map(function(k) { return { type: k, count: bd[k] }; });
           },
 
-          shortId: function(id) {
-            return id && id.length > 8 ? id.substring(0, 8) + '…' : id;
-          },
 
           relativeTime: function(ts) {
             var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
