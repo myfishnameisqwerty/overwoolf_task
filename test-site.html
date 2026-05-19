@@ -79,8 +79,8 @@
       })();
     </script>
 
-    Client ID defaults to location.hostname.
-    To override, set window._trackerClientId before the snippet runs.
+    The clientId is the page's domain (location.hostname). Events are
+    auto-registered under that clientId on first /config call.
   -->
   <script>
     window._tracker = window._tracker || [];
@@ -99,7 +99,6 @@
     <div>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
-      <a href="http://localhost:8080/dashboard" target="_blank">Dashboard</a>
     </div>
   </nav>
 
@@ -151,7 +150,7 @@
   </section>
 
   <footer>
-    <p>Test publisher page &middot; <a href="http://localhost:8080/dashboard" target="_blank">Open Tracker Dashboard</a></p>
+    <p>Test publisher page &middot; <a href="http://localhost:5500/dashboard" target="_blank">Open Tracker Dashboard</a></p>
   </footer>
 
   <script>

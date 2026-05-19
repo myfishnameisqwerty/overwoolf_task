@@ -106,7 +106,7 @@ There are two ways to add the widget — pick based on your goal.
 
 ### Option A — Permanent (you own the site)
 
-Edit the site's HTML source and paste this into `<head>`. It will track every visitor from that point on. The client ID is automatically derived from your domain:
+Edit the site's HTML source and paste this into `<head>`. It will track every visitor from that point on. The client ID is `location.hostname` — the page's domain. It auto-registers on the first `/config` call:
 
 ```html
 <script>
@@ -114,21 +114,6 @@ Edit the site's HTML source and paste this into `<head>`. It will track every vi
   (function() {
     var s = document.createElement('script');
     s.src = 'http://localhost:8080/widget.js'; // replace with your backend URL
-    s.async = true;
-    document.head.appendChild(s);
-  })();
-</script>
-```
-
-The widget automatically uses `location.hostname` as the client ID. To override with a custom ID, set it before the snippet:
-
-```html
-<script>
-  window._trackerClientId = 'acme-corp';   // optional: custom client ID
-  window._tracker = window._tracker || [];
-  (function() {
-    var s = document.createElement('script');
-    s.src = 'http://localhost:8080/widget.js';
     s.async = true;
     document.head.appendChild(s);
   })();
@@ -209,7 +194,6 @@ Or via the F12 console on any open tab, paste the snippet above and hit Enter.
 | GET | `/dashboard` | Monitoring dashboard |
 
 All responses use the envelope `{ "status": "success"|"error", "data": ... }`.
-Full shapes and examples are in [`docs/HLD.md`](docs/HLD.md).
 
 ---
 
@@ -258,6 +242,14 @@ Why a single transaction per batch (not one transaction per event):
 
 WAL (Write-Ahead Logging) mode is enabled at startup so concurrent reads are never blocked by an in-progress write.
 
+**Latency:** ~5 s widget batch + ~5 s dashboard poll = up to ~10 s end-to-end visibility.
+
+**Idempotency:** each event carries a client-generated `eventId` (UUID). The server uses `INSERT OR IGNORE` on a `UNIQUE` index. Retries are safe — duplicates are silently dropped.
+
+**Timestamps:** `timestamp` is the client wall-clock value; `server_ts` is set on insert. The server uses `server_ts` for active-session and stats time windows so a wrong client clock cannot hide or fabricate recent activity.
+
+**Buffering:** the widget retries failed flushes (10 s fetch timeout, in-memory queue capped at 500 events, oldest dropped on overflow). There is no server-side queue — the widget queue is the system's only buffer.
+
 ---
 
 ## Scalability
@@ -266,7 +258,7 @@ The relevant unit for storage throughput is **write transactions per second (TPS
 
 ### Concurrency model
 
-Each `POST /events` is handled in its own goroutine. All goroutines share a **single SQLite connection** (`SetMaxOpenConns(1)`), so writes are serialized through the connection pool — no "database is locked" errors, no OS threads per request. Goroutines waiting for the connection are ~2 KB each and impose negligible overhead.
+Each `POST /events` is handled in its own goroutine. The connection pool is sized at **25 connections** — WAL allows concurrent readers alongside a single writer, so dashboard and stats polls do not queue behind ingest writes. `busy_timeout=5000` handles the rare case of two writers racing for the same page.
 
 ### Capacity math
 
@@ -284,11 +276,11 @@ SQLite WAL serializes writers. The practical ceiling is **~100–150 sustained w
 
 **Move to Postgres when:**
 - Sustained write TPS approaches ~100–150
-- Multiple backend instances are needed (SQLite is a single file, not shareable)
+- Multiple backend instances are needed
 - Events table grows past ~10 GB
 
 **Add Kafka in front of Postgres when:**
-- Write volume exceeds ~50,000–100,000 events/second
+- Write volume exceeds ~50,000 events/second
 - Multiple independent consumers are needed (analytics, alerting, ML)
 - Event replay is required
 
