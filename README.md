@@ -18,7 +18,7 @@ cd overwoolf_task
 docker compose up --build
 ```
 
-The backend starts on `http://localhost:8080`. Storage is initialized automatically on first run — `schema.sql` is embedded in the binary and applied at startup. A demo client (`demo-client`) is seeded and ready to use.
+The backend starts on `http://localhost:8080`. Storage is initialized automatically on first run — `schema.sql` is embedded in the binary and applied at startup.
 
 To verify everything is running:
 
