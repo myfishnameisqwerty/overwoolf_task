@@ -1,18 +1,21 @@
 (function() {
-  var thisScript = document.currentScript;
-  var BACKEND_URL = new URL(thisScript.src).origin;
-  var clientId = location.hostname || 'unknown';
+  const thisScript = document.currentScript;
+  const BACKEND_URL = new URL(thisScript.src).origin;
+  const clientId = location.hostname || 'unknown';
 
-  var MAX_QUEUE = 500;
-  var FETCH_TIMEOUT_MS = 10000;
+  const MAX_QUEUE = 500;
+  const FETCH_TIMEOUT_MS = 10000;
+  const DEFAULT_FLUSH_INTERVAL = 5000;
+  const DEFAULT_TRACKED_EVENTS = ['pageview', 'click'];
 
-  var sessionId;
-  var flushInterval;
-  var queue = [];
-  var flushTimer = null;
-  var clickListener = null;
-  var badgeHost = null;
-  var badgeShadowCount = null;
+  let sessionId;
+  let flushInterval = DEFAULT_FLUSH_INTERVAL;
+  let trackedEvents = DEFAULT_TRACKED_EVENTS;
+  let queue = [];
+  let flushTimer = null;
+  let teardowns = [];
+  let badgeHost = null;
+  let badgeShadowCount = null;
 
   function makeEvent(eventType, metadata) {
     return {
@@ -31,6 +34,33 @@
     }
   }
 
+  // To add a new auto-tracked event type:
+  //   1. Add an entry below: key = eventType string, value = setup fn that
+  //      attaches its listener (or fires its one-shot event) and returns a
+  //      teardown fn called from destroy().
+  //   2. Include the eventType in the client's trackedEvents in the DB.
+  const autoTrackers = {
+    pageview: function() {
+      queue.push(makeEvent('pageview', { url: location.href, title: document.title }));
+      capQueue();
+      return function() {};
+    },
+    click: function() {
+      const listener = function(e) {
+        const el = e.target.closest('[data-track]');
+        if (el) {
+          queue.push(makeEvent('click', {
+            label: el.getAttribute('data-track'),
+            tag: el.tagName.toLowerCase()
+          }));
+          capQueue();
+        }
+      };
+      document.addEventListener('click', listener);
+      return function() { document.removeEventListener('click', listener); };
+    },
+  };
+
   function handleCommand(cmd) {
     if (!Array.isArray(cmd) || cmd[0] !== 'track') return;
     queue.push(makeEvent(cmd[1], cmd[2] || {}));
@@ -39,11 +69,11 @@
 
   function flush() {
     if (queue.length === 0) return;
-    var batch = queue.slice();
+    const batch = queue.slice();
     queue = [];
 
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT_MS);
 
     fetch(BACKEND_URL + '/events', {
       method: 'POST',
@@ -52,7 +82,7 @@
       signal: controller.signal
     }).then(function(r) {
       clearTimeout(timeoutId);
-      if (!r.ok) throw new Error('http ' + r.status);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
     }).catch(function() {
       clearTimeout(timeoutId);
       queue = batch.concat(queue);
@@ -64,7 +94,7 @@
     fetch(BACKEND_URL + '/stats/' + encodeURIComponent(clientId))
       .then(function(r) { return r.json(); })
       .then(function(json) {
-        var count = (json.data && json.data.sessionCount) || 0;
+        const count = (json.data && json.data.sessionCount) || 0;
         if (badgeShadowCount) {
           badgeShadowCount.textContent = count + ' active viewer' + (count !== 1 ? 's' : '');
         }
@@ -79,9 +109,9 @@
 
   function injectBadge() {
     badgeHost = document.createElement('div');
-    var shadow = badgeHost.attachShadow({ mode: 'closed' });
+    const shadow = badgeHost.attachShadow({ mode: 'closed' });
 
-    var style = document.createElement('style');
+    const style = document.createElement('style');
     style.textContent = `
       .badge {
         position: fixed;
@@ -109,10 +139,10 @@
       }
     `;
 
-    var badge = document.createElement('div');
+    const badge = document.createElement('div');
     badge.className = 'badge';
 
-    var dot = document.createElement('span');
+    const dot = document.createElement('span');
     dot.className = 'dot';
 
     badgeShadowCount = document.createElement('span');
@@ -132,17 +162,17 @@
       clearInterval(flushTimer);
       flushTimer = null;
     }
-    if (clickListener) {
-      document.removeEventListener('click', clickListener);
-      clickListener = null;
+    for (const teardown of teardowns) {
+      teardown();
     }
+    teardowns = [];
     if (badgeHost && badgeHost.parentNode) {
       badgeHost.parentNode.removeChild(badgeHost);
       badgeHost = null;
     }
     badgeShadowCount = null;
     queue = [];
-    delete window._tracker;
+    window._tracker = [];
   }
 
   function startup() {
@@ -152,25 +182,19 @@
       sessionStorage.setItem('_tid', sessionId);
     }
 
-    queue.push(makeEvent('pageview', { url: location.href, title: document.title }));
-
-    clickListener = function(e) {
-      var el = e.target.closest('[data-track]');
-      if (el) {
-        queue.push(makeEvent('click', {
-          label: el.getAttribute('data-track'),
-          tag: el.tagName.toLowerCase()
-        }));
-        capQueue();
+    for (const type of trackedEvents) {
+      const factory = autoTrackers[type];
+      if (factory) {
+        teardowns.push(factory());
       }
-    };
-    document.addEventListener('click', clickListener);
+    }
 
-    var preload = window._tracker;
+    const preload = window._tracker;
     if (Array.isArray(preload)) {
-      for (var i = 0; i < preload.length; i++) {
+      for (let i = 0; i < preload.length; i++) {
         handleCommand(preload[i]);
       }
+      capQueue();
     }
 
     window._tracker = {
@@ -186,14 +210,15 @@
     fetch(BACKEND_URL + '/config/' + encodeURIComponent(clientId))
       .then(function(r) { return r.json(); })
       .then(function(json) {
-        flushInterval = (json.data && json.data.flushInterval) || 5000;
+        if (json && json.data) {
+          flushInterval = json.data.flushInterval || flushInterval;
+          if (Array.isArray(json.data.trackedEvents) && json.data.trackedEvents.length > 0) {
+            trackedEvents = json.data.trackedEvents;
+          }
+        }
       })
-      .catch(function() {
-        flushInterval = 5000;
-      })
-      .then(function() {
-        startup();
-      });
+      .catch(function() {})
+      .then(function() { startup(); });
   }
 
   init();

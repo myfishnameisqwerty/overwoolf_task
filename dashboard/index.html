@@ -119,10 +119,7 @@
   </main>
 
   <script>
-    // When the dashboard is served by the backend itself (port 8080), relative
-    // URLs work. When it's served from a separate dev server (e.g. VS Code
-    // Live Server on :5500), point fetches at the backend explicitly.
-    var API_BASE = (location.port === '' || location.port === '8080') ? '' : 'http://' + location.hostname + ':8080';
+    const API_BASE = (location.port === '' || location.port === '8080') ? '' : 'http://' + location.hostname + ':8080';
 
     document.addEventListener('alpine:init', function() {
       Alpine.data('dashboard', function() {
@@ -140,19 +137,18 @@
           _statsDebounce: null,
 
           init: function() {
-            var self = this;
-            self.loadSessions();
-            self.loadStats();
-            self._refreshTimer = setInterval(function() {
-              if (!self.selectedSession) {
-                self.loadSessions();
-                self.loadStats();
+            this.loadSessions();
+            this.loadStats();
+            this._refreshTimer = setInterval(() => {
+              if (!this.selectedSession) {
+                this.loadSessions();
+                this.loadStats();
               }
             }, 5000);
           },
 
           loadSessions: function() {
-            var self = this;
+            const self = this;
             fetch(API_BASE + '/sessions')
               .then(function(r) { return r.json(); })
               .then(function(json) {
@@ -161,12 +157,12 @@
                   self.nextCursor = json.data.nextCursor;
                 }
               })
-              .catch(function() {});
+              .catch(function(err) { console.error('[dashboard] /sessions failed', err); });
           },
 
           loadMore: function() {
             if (!this.nextCursor) return;
-            var self = this;
+            const self = this;
             fetch(API_BASE + '/sessions?before=' + encodeURIComponent(self.nextCursor))
               .then(function(r) { return r.json(); })
               .then(function(json) {
@@ -175,11 +171,11 @@
                   self.nextCursor = json.data.nextCursor;
                 }
               })
-              .catch(function() {});
+              .catch(function(err) { console.error('[dashboard] /sessions (paginated) failed', err); });
           },
 
           selectSession: function(sessionId) {
-            var self = this;
+            const self = this;
             self.selectedSession = sessionId;
             self.sessionEvents = [];
             self.sessionNextCursor = null;
@@ -197,12 +193,12 @@
                   }
                 }
               })
-              .catch(function() {});
+              .catch(function(err) { console.error('[dashboard] /sessions/:id failed', err); });
           },
 
           loadMoreEvents: function() {
             if (!this.sessionNextCursor || !this.selectedSession) return;
-            var self = this;
+            const self = this;
             fetch(API_BASE + '/sessions/' + encodeURIComponent(self.selectedSession) + '?before=' + encodeURIComponent(self.sessionNextCursor))
               .then(function(r) { return r.json(); })
               .then(function(json) {
@@ -211,7 +207,7 @@
                   self.sessionNextCursor = json.data.nextCursor;
                 }
               })
-              .catch(function() {});
+              .catch(function(err) { console.error('[dashboard] /sessions/:id (paginated) failed', err); });
           },
 
           back: function() {
@@ -223,7 +219,7 @@
 
           loadStats: function() {
             if (!this.statsClientId) return;
-            var self = this;
+            const self = this;
             fetch(API_BASE + '/stats/' + encodeURIComponent(self.statsClientId))
               .then(function(r) { return r.json(); })
               .then(function(json) {
@@ -231,23 +227,23 @@
                   self.stats = json.data;
                 }
               })
-              .catch(function() {});
+              .catch(function(err) { console.error('[dashboard] /stats failed', err); });
           },
 
           onClientIdInput: function() {
-            var self = this;
+            const self = this;
             clearTimeout(self._statsDebounce);
             self._statsDebounce = setTimeout(function() { self.loadStats(); }, 300);
           },
 
           breakdownEntries: function() {
-            var bd = (this.stats && this.stats.breakdown) || {};
+            const bd = (this.stats && this.stats.breakdown) || {};
             return Object.keys(bd).map(function(k) { return { type: k, count: bd[k] }; });
           },
 
 
           relativeTime: function(ts) {
-            var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+            const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
             if (diff < 60) return diff + 's ago';
             if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
             return Math.floor(diff / 3600) + 'h ago';
