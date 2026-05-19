@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreamLine — Effortless Project Management</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; color: #111827; line-height: 1.6; }
+
+    nav {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e5e7eb;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .logo { font-weight: 800; font-size: 1.25rem; color: #4f46e5; }
+    nav a { color: #374151; text-decoration: none; margin-left: 2rem; font-size: 0.9rem; }
+    nav a:hover { color: #4f46e5; }
+
+    .hero {
+      text-align: center; padding: 5rem 2rem;
+      background: linear-gradient(135deg, #eef2ff 0%, #f9fafb 100%);
+    }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 800; color: #1e1b4b; margin-bottom: 1rem; }
+    .hero p { font-size: 1.2rem; color: #6b7280; max-width: 560px; margin: 0 auto 2.5rem; }
+    .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    .btn-primary {
+      background: #4f46e5; color: #fff; border: none;
+      padding: 0.8rem 2rem; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-outline {
+      background: transparent; color: #4f46e5; border: 2px solid #4f46e5;
+      padding: 0.75rem 2rem; border-radius: 6px; font-size: 1rem; font-weight: 600;
+      cursor: pointer; text-decoration: none; display: inline-block;
+    }
+    .btn-outline:hover { background: #ede9fe; }
+
+    .features { padding: 4rem 2rem; max-width: 1000px; margin: 0 auto; }
+    .features h2 { text-align: center; font-size: 1.9rem; font-weight: 700; margin-bottom: 2.5rem; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
+    .feature-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1.5rem; }
+    .feature-card h3 { color: #4f46e5; margin-bottom: 0.4rem; font-size: 1.05rem; }
+    .feature-card p { color: #6b7280; font-size: 0.93rem; }
+
+    .pricing { background: #f9fafb; padding: 4rem 2rem; }
+    .pricing-inner { max-width: 800px; margin: 0 auto; }
+    .pricing h2 { text-align: center; font-size: 1.9rem; font-weight: 700; margin-bottom: 2.5rem; }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; }
+    .pricing-card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 2rem; text-align: center;
+    }
+    .pricing-card.featured { border-color: #4f46e5; box-shadow: 0 0 0 2px #4f46e5; }
+    .pricing-card h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .pricing-card .price { font-size: 2.25rem; font-weight: 800; color: #4f46e5; margin: 0.75rem 0; }
+    .pricing-card .price small { font-size: 1rem; font-weight: 400; color: #6b7280; }
+    .pricing-card p { color: #6b7280; font-size: 0.93rem; margin-bottom: 1.5rem; }
+
+    footer {
+      text-align: center; padding: 2rem; color: #9ca3af;
+      font-size: 0.875rem; border-top: 1px solid #e5e7eb;
+    }
+    footer a { color: #4f46e5; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+
+  <!--
+    Widget embed snippet — paste this into your <head>:
+
+    <script>
+      window._tracker = window._tracker || [];
+      (function() {
+        var s = document.createElement('script');
+        s.src = 'http://localhost:8080/widget.js';
+        s.async = true;
+        document.head.appendChild(s);
+      })();
+    </script>
+
+    Client ID defaults to location.hostname.
+    To override, set window._trackerClientId before the snippet runs.
+  -->
+  <script>
+    window._tracker = window._tracker || [];
+    (function() {
+      var s = document.createElement('script');
+      s.src = 'http://localhost:8080/widget.js';
+      s.async = true;
+      document.head.appendChild(s);
+    })();
+  </script>
+</head>
+<body>
+
+  <nav>
+    <span class="logo">StreamLine</span>
+    <div>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="http://localhost:8080/dashboard" target="_blank">Dashboard</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <h1>Ship faster with StreamLine</h1>
+    <p>The all-in-one project management tool that gets out of your way. Trusted by 12,000+ teams worldwide.</p>
+    <div class="hero-actions">
+      <button class="btn-primary" data-track="hero-signup">Start for free</button>
+      <a class="btn-outline" href="#features" data-track="hero-learn-more">Learn more ↓</a>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <h2>Everything your team needs</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h3>Real-time collaboration</h3>
+        <p>See changes as they happen. No more refresh, no more conflicts across your team.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Smart automation</h3>
+        <p>Automate repetitive tasks and focus on what actually moves the needle.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Powerful reporting</h3>
+        <p>Insights that help you deliver on time, every time — no spreadsheets needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="pricing-inner">
+      <h2>Simple, honest pricing</h2>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Starter</h3>
+          <div class="price">Free</div>
+          <p>Up to 5 users. Perfect for small teams just getting started.</p>
+          <button class="btn-primary" data-track="pricing-starter">Get started free</button>
+        </div>
+        <div class="pricing-card featured">
+          <h3>Pro</h3>
+          <div class="price">$12<small>/mo per user</small></div>
+          <p>Unlimited users, priority support, and advanced analytics.</p>
+          <button class="btn-primary" data-track="pricing-pro">Start free trial</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Test publisher page &middot; <a href="http://localhost:8080/dashboard" target="_blank">Open Tracker Dashboard</a></p>
+  </footer>
+
+  <script>
+    setTimeout(function() {
+      window._tracker.push(['track', 'scroll_depth', { percent: 50 }]);
+    }, 2000);
+  </script>
+
+</body>
+</html>
