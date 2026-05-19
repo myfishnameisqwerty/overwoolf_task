@@ -20,6 +20,3 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_server_ts         ON events (server_ts);
 CREATE INDEX IF NOT EXISTS idx_events_client_server_ts  ON events (client_id, server_ts);
 CREATE INDEX IF NOT EXISTS idx_events_session_timestamp ON events (session_id, timestamp DESC);
-
-INSERT OR IGNORE INTO clients (id, flush_interval, tracked_events)
-VALUES ('demo-client', 5000, 'pageview,click');
